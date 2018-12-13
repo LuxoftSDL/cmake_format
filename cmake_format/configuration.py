@@ -31,6 +31,10 @@ def parse_bool(string):
   return False
 
 
+def parse_as_list(string, separator=":"):
+  return list(string.split(separator))
+
+
 class ConfigObject(object):
   """
   Provides simple serialization to a dictionary based on the assumption that
@@ -82,10 +86,10 @@ class Configuration(ConfigObject):
   # pylint: disable=too-many-arguments
   # pylint: disable=too-many-instance-attributes
   def __init__(self, line_width=80, tab_size=2,
-               max_subargs_per_line=3,
+               max_subargs_per_line=10,
                separate_ctrl_name_with_space=False,
                separate_fn_name_with_space=False,
-               dangle_parens=False,
+               dangle_parens=True,
                bullet_char=None,
                enum_char=None,
                line_ending=None,
@@ -99,7 +103,8 @@ class Configuration(ConfigObject):
                literal_comment_pattern=None,
                fence_pattern=None,
                ruler_pattern=None,
-               **_):
+               ignore_directories=[],
+               ** _):
 
     self.line_width = line_width
     self.tab_size = tab_size
@@ -163,6 +168,8 @@ class Configuration(ConfigObject):
     # formatting and the only thing we have accessible through the whole format
     # stack is this config object... so I'm abusing it by adding this field here
     self.first_token = None
+
+    self.ignore_directories = get_default(ignore_directories, [])
 
   def clone(self):
     """
@@ -229,6 +236,8 @@ VARDOCS = {
     "ruler_pattern":
     ("Regular expression to match rulers in comments default=r'{}'"
      .format(DEFAULT_RULER_PATTERN)),
+    "ignore_directories":
+    "list of directories which will be ignored during parsing, use ':' as separator directory",
     "additional_commands":
     "Specify structure for custom cmake functions"
 }
