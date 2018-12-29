@@ -23,12 +23,17 @@ import shutil
 import sys
 import tempfile
 import textwrap
+import fnmatch
+import re
 
 import cmake_format
 from cmake_format import configuration
 from cmake_format import formatter
 from cmake_format import lexer
 from cmake_format import parser
+
+CMAKE_LISTS_PATTERNS = ["CMakeLists.txt", "*.cmake"]
+CMAKE_LISTS_RE_PATTERNS = r'((CMakeLists\.txt)|(.+[^<\.h>]\.cmake))'
 
 
 def detect_line_endings(infile_content):
@@ -194,9 +199,24 @@ def dump_config(args, config_dict, outfile):
       outfile.write('{} = {}\n\n'.format(key, ppr.pformat(value)))
 
 
+def get_list_of_cmake_files(path_to_folder):
+  if not os.path.isdir(path_to_folder):
+    return []
+
+  results = []
+  for root, dirnames, filenames in os.walk(path_to_folder):
+    for filename in fnmatch.filter(filenames, CMAKE_LISTS_PATTERNS[0]):
+      results.append(os.path.join(root, filename))
+
+    for filename in fnmatch.filter(filenames, CMAKE_LISTS_PATTERNS[1]):
+      results.append(os.path.join(root, filename))
+
+  return results
+
+
 USAGE_STRING = """
 cmake-format [-h]
-             [--dump-config {yaml,json,python} | -i | -o OUTFILE_PATH]
+             [--dump-config {yaml,json,python} | -i | -o OUTFILE_PATH | -f DIRECTORY_PATH]
              [-c CONFIG_FILE]
              infilepath [infilepath ...]
 """
@@ -230,6 +250,10 @@ def main():
   mutex.add_argument('-o', '--outfile-path', default=None,
                      help='Where to write the formatted file. '
                           'Default is stdout.')
+
+  mutex.add_argument('-f', '--folder-path', default=None,
+                     help='Directory where cmake files should be formatted.')
+
   mutex.add_argument('--dump', choices=['lex', 'parse', 'layout'],
                      default=None)
 
@@ -254,6 +278,10 @@ def main():
     # to distinguish between "not specified" = "default" and "specified"
     if key == 'additional_commands':
       continue
+    elif key == 'ignore_directories':
+      optgroup.add_argument('--' + key.replace('_', '-'),
+                            type=configuration.parse_as_list,
+                            help=helptext)
     elif isinstance(value, bool):
       optgroup.add_argument('--' + key.replace('_', '-'), nargs='?',
                             default=None, const=(not value),
@@ -292,6 +320,14 @@ def main():
     assert args.outfile_path == '-', \
         "If stdin is the input file, then stdout must be the output file"
 
+  if args.folder_path != None:
+    args.infilepaths = get_list_of_cmake_files(args.folder_path)
+    if not args.infilepaths:
+      sys.stderr.write(
+          "cmake-format error: Directory is not found: '{0}' \n".format(args.folder_path))
+      sys.exit(0)
+    args.in_place = True
+
   for infile_path in args.infilepaths:
     # NOTE(josh): have to load config once for every file, because we may pick
     # up a new config file location for each path
@@ -302,10 +338,11 @@ def main():
 
     for key, value in vars(args).items():
       if (key in configuration.Configuration.get_field_names()
-          and value is not None):
+              and value is not None):
         config_dict[key] = value
 
     cfg = configuration.Configuration(**config_dict)
+
     if args.in_place:
       ofd, tempfile_path = tempfile.mkstemp(suffix='.txt', prefix='CMakeLists-')
       os.close(ofd)
@@ -325,13 +362,34 @@ def main():
                           newline='')
 
     parse_ok = True
+    ignored = False
     if infile_path == '-':
       infile = io.open(os.dup(sys.stdin.fileno()),
                        mode='r', encoding='utf-8', newline='')
     else:
+      if not os.path.exists(infile_path):
+        sys.stderr.write(
+            "cmake-format error: File is not found: '{0}' \n".format(infile_path))
+        parse_ok = False
+        continue
       infile = io.open(infile_path, 'r', encoding='utf-8')
-
     try:
+
+      for ignore_dir in cfg.ignore_directories:
+        if ignore_dir in infile_path:
+          ignored = True
+          break
+
+      if ignored:
+        parse_ok = False
+        continue
+
+      if infile_path != '-' and not re.findall(CMAKE_LISTS_RE_PATTERNS, infile_path):
+        sys.stderr.write(
+            "cmake-format error: It is not cmake file: '{0}' \n".format(infile_path))
+        parse_ok = False
+        continue
+
       with infile:
         process_file(cfg, infile, outfile, args.dump)
     except:
