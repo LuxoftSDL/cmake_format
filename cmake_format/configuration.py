@@ -94,7 +94,7 @@ class Configuration(ConfigObject):
                additional_commands=None,
                always_wrap=None,
                algorithm_order=None,
-               enable_markup=True,
+               enable_markup=False,
                first_comment_is_literal=False,
                literal_comment_pattern=None,
                fence_pattern=None,

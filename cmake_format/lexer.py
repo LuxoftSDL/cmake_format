@@ -105,6 +105,9 @@ def tokenize(contents):
       # https://stackoverflow.com/a/37379449/141023
       (r'(?<![^\s\(])"[^"\\]*(?:\\.[^"\\]*)*"(?![^\s\)])',
        lambda s, t: (TokenType.QUOTED_LITERAL, t)),
+      # bash commands
+      (r"[^(]*COMMAND (/bin/bash[^~]*?)fi\\\"\n",
+       lambda s, t: (TokenType.UNQUOTED_LITERAL, t)),
       # single quoted string
       (r"(?<![^\s\(])'[^'\\]*(?:\\.[^'\\]*)*'(?![^\s\)])",
        lambda s, t: (TokenType.QUOTED_LITERAL, t)),
